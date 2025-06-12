@@ -4,4 +4,5 @@ volumes/
 shared/
 supabase/
 searxng/uwsgi.ini
+searxng/uwsgi.ini.new
 searxng/settings.yml
