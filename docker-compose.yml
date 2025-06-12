@@ -65,6 +65,7 @@ x-init-ollama: &init-ollama
 
 services:
   flowise:
+    profiles: ["flowise", "all"]
     image: flowiseai/flowise
     restart: unless-stopped
     container_name: flowise
@@ -171,6 +172,7 @@ services:
       start_period: 15s
 
   caddy:
+    profiles: ["caddy", "all"]  
     container_name: caddy
     image: docker.io/library/caddy:2-alpine
     network_mode: host
@@ -370,6 +372,7 @@ services:
       start_period: 15s
 
   searxng:
+    profiles: ["searxng", "all"]  
     container_name: searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
