@@ -9,14 +9,18 @@ def add_root_to_volumes(input: str, output:str, root_path: str):
 
     for volume in data.get('volumes'):
         if data["volumes"][volume] is None:
+            target_path = os.path.join(root_path, volume)
+            # Update the yml section
             data["volumes"][volume]=OrderedDict({
                 "driver": "local",
                 "driver_opts": OrderedDict({
                     "type": "none",
                     "o": "bind",
-                    "device": os.path.join(root_path, volume)
+                    "device": target_path
                 })
             })
+            # Create the directory if it does not exist
+            os.makedirs(target_path, exist_ok=True)
 
     with open(output, "w") as file:
         yaml.dump(data, file)
