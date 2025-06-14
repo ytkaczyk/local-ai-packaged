@@ -16,6 +16,7 @@ volumes:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
 
+
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
@@ -28,6 +29,7 @@ x-n8n: &service-n8n
     - N8N_PERSONALIZATION_ENABLED=false
     - N8N_ENCRYPTION_KEY
     - N8N_USER_MANAGEMENT_JWT_SECRET
+    - N8N_SECURE_COOKIE=false
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
 
 x-ollama: &service-ollama
@@ -172,16 +174,25 @@ services:
       start_period: 15s
 
   caddy:
-    profiles: ["caddy", "all"]  
     container_name: caddy
     image: docker.io/library/caddy:2-alpine
-    network_mode: host
     restart: unless-stopped
+    ports:
+      - "8001:8001"
+      - "8002:8002"
+      - "8003:8003"
+      - "8004:8004"
+      - "8005:8005"
+      - "8006:8006"
+      - "8007:8007"
+      - "8008:8008"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data:rw
       - caddy-config:/config:rw
     environment:
+      - GOMAXPROCS=4
+      - GOMEMLIMIT=134217728
       - N8N_HOSTNAME=${N8N_HOSTNAME:-":8001"}
       - WEBUI_HOSTNAME=${WEBUI_HOSTNAME:-":8002"}
       - FLOWISE_HOSTNAME=${FLOWISE_HOSTNAME:-":8003"}
@@ -189,6 +200,7 @@ services:
       - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME:-":8005"}
       - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
       - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
+      - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}      
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
       - ALL
@@ -202,12 +214,12 @@ services:
     healthcheck:
       test:
         [
-          "CMD", "wget", "--spider", "--no-verbose", "-T","1", "http://localhost:8001/","-O","/dev/null"
+          "CMD", "wget", "--spider", "--no-verbose", "--tries=1", "http://localhost:8001","-O","/dev/null"
         ]
-      interval: 30s
-      timeout: 5s
+      interval: 60s
+      timeout: 15s
       retries: 5
-      start_period: 15s        
+      start_period: 120s        
 
   langfuse-worker:
     image: langfuse/langfuse-worker:3
