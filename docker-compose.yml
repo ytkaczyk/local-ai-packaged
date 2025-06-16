@@ -132,7 +132,7 @@ services:
     volumes:
       - ./n8n/backup:/backup  
     depends_on:
-      # Wait for supabase postgres to be ready.
+      # Wait for postgres to be ready.
       postgres:
         condition: service_healthy          
 
@@ -158,7 +158,7 @@ services:
     depends_on:
       n8n-import:
         condition: service_completed_successfully
-      # Wait for supabase postgres to be ready.
+      # Wait for postgres to be ready.
       postgres:
         condition: service_healthy    
       # Wait for qdrant to be ready.
