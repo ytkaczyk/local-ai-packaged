@@ -40,9 +40,14 @@
     reverse_proxy neo4j:7474
 }
 
+# Qdrant
+{$QDRANT_HOSTNAME} {
+	reverse_proxy qdrant:6333
+}
+
 # PgAdmin
 {$PGADMIN_HOSTNAME} {
-	reverse_proxy pgadmin:8080
+	reverse_proxy pgadmin:80
 }
 
 # # # SearXNG
