@@ -16,7 +16,6 @@ volumes:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
 
-
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
@@ -36,10 +35,13 @@ x-ollama: &service-ollama
   image: ollama/ollama:latest
   container_name: ollama
   restart: unless-stopped
-  ports:
-    - 11434:11434
+  expose:
+    - 11434/tcp
   environment:
     - OLLAMA_CONTEXT_LENGTH=8192
+    - OLLAMA_FLASH_ATTENTION=1
+    - OLLAMA_KV_CACHE_TYPE=q8_0
+    - OLLAMA_MAX_LOADED_MODELS=2
   volumes:
     - ollama_storage:/root/.ollama
   healthcheck:
@@ -71,10 +73,10 @@ services:
     image: flowiseai/flowise
     restart: unless-stopped
     container_name: flowise
+    expose:
+      - 3001/tcp
     environment:
         - PORT=3001
-    ports:
-        - 3001:3001
     extra_hosts:
       - "host.docker.internal:host-gateway"        
     volumes:
@@ -94,8 +96,8 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     restart: unless-stopped
     container_name: open-webui
-    ports:
-      - "3000:8080"
+    expose:
+      - 8080/tcp
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -131,8 +133,8 @@ services:
     <<: *service-n8n
     container_name: n8n
     restart: unless-stopped
-    ports:
-      - 5678:5678
+    expose:
+      - 5678/tcp
     volumes:
       - n8n_storage:/home/node/.n8n
       - ./n8n/backup:/backup
@@ -160,8 +162,12 @@ services:
     image: qdrant/qdrant
     container_name: qdrant
     restart: unless-stopped
+    expose:
+      - 6333/tcp
+      - 6334/tcp
     ports:
       - 6333:6333
+      - 6334:6334
     volumes:
       - qdrant_storage:/qdrant/storage
     healthcheck:
@@ -172,6 +178,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  neo4j:
+    image: neo4j:latest
+    volumes:
+        - ./neo4j/logs:/logs
+        - ./neo4j/config:/config
+        - ./neo4j/data:/data
+        - ./neo4j/plugins:/plugins
+    expose:
+      - 7473/tcp
+      - 7474/tcp
+      - 7687/tcp
+    ports:
+      - 7687:7687
+    environment:
+        - NEO4J_AUTH=${NEO4J_AUTH}
+    restart: always
 
   caddy:
     container_name: caddy
@@ -200,7 +223,8 @@ services:
       - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME:-":8005"}
       - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
       - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
-      - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}      
+      - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}
+      - PGADMIN_HOSTNAME=${PGADMIN_HOSTNAME:-":8021"}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
       - ALL
@@ -233,10 +257,10 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    ports:
-      - 127.0.0.1:3030:3030
+    expose:
+     - 3030/tcp
     environment: &langfuse-worker-env
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      DATABASE_URL: postgresql://postgres:${STANDALONE_POSTGRESS_PASSWORD}@postgres:5432/postgres
       SALT: ${LANGFUSE_SALT}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
@@ -283,8 +307,8 @@ services:
     image: langfuse/langfuse:3
     restart: always
     depends_on: *langfuse-depends-on
-    ports:
-      - 3002:3000
+    expose:
+      - 3000/tcp
     environment:
       <<: *langfuse-worker-env
       NEXTAUTH_URL: http://localhost:3002
@@ -303,6 +327,10 @@ services:
     image: clickhouse/clickhouse-server
     restart: always
     user: "101:101"
+    expose:
+      - 8123/tcp
+      - 9000/tcp
+      - 9009/tcp    
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: clickhouse
@@ -310,9 +338,6 @@ services:
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
-    ports:
-      - 127.0.0.1:8123:8123
-      - 127.0.0.1:9000:9000
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
@@ -326,12 +351,12 @@ services:
     entrypoint: sh
     # create the 'langfuse' bucket before starting the service
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    expose:
+      - 9000/tcp
+      - 9001/tcp
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - 9090:9000
-      - 127.0.0.1:9091:9001
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
@@ -351,10 +376,10 @@ services:
       retries: 10
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${STANDALONE_POSTGRESS_PASSWORD}
       POSTGRES_DB: postgres
-    ports:
-      - 127.0.0.1:5433:5432
+    expose:
+      - 5432/tcp
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data              
 
@@ -363,6 +388,8 @@ services:
     image: docker.io/valkey/valkey:8-alpine
     command: valkey-server --save 30 1 --loglevel warning
     restart: unless-stopped  
+    expose:
+      - 6379/tcp
     volumes:
       - valkey-data:/data
     cap_drop:
@@ -388,8 +415,8 @@ services:
     container_name: searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
-    ports:
-      - 8080:8080
+    expose:
+      - 8080/tcp
     volumes:
       - ./searxng:/etc/searxng:rw
     environment:

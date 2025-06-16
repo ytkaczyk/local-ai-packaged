@@ -12,7 +12,7 @@
 
 # Open WebUI
 {$WEBUI_HOSTNAME} {
-	reverse_proxy open-webui:3000
+	reverse_proxy open-webui:8080
 }
 
 # Flowise
@@ -22,7 +22,7 @@
 
 # Langfuse
 {$LANGFUSE_HOSTNAME} {
-	reverse_proxy langfuse-web:3002
+	reverse_proxy langfuse-web:3000
 }
 
 # Ollama API
@@ -38,6 +38,11 @@
 # Neo4j
 {$NEO4J_HOSTNAME} {
     reverse_proxy neo4j:7474
+}
+
+# PgAdmin
+{$PGADMIN_HOSTNAME} {
+	reverse_proxy pgadmin:8080
 }
 
 # # # SearXNG
