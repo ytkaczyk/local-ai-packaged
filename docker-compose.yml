@@ -6,29 +6,36 @@ volumes:
   n8n_storage:
   ollama_storage:
   qdrant_storage:
-  open-webui:
+  open_webui_data:
   flowise:
-  caddy-data:
-  caddy-config:
-  valkey-data:
-  langfuse_postgres_data:
-  langfuse_clickhouse_data:
-  langfuse_clickhouse_logs:
-  langfuse_minio_data:
+  caddy_data:
+  caddy_config:
+  valkey_data:
+  clickhouse_data:
+  clickhouse_logs:
+  minio_data:
+  postgres_data:
+  neo4j_logs:
+  neo4j_config:
+  neo4j_data:
+  neo4j_plugins:
+  pgadmin_data:
 
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
     - DB_TYPE=postgresdb
-    - DB_POSTGRESDB_HOST=db
+    - DB_POSTGRESDB_HOST=postgres
     - DB_POSTGRESDB_USER=postgres
-    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-    - DB_POSTGRESDB_DATABASE=postgres
+    - DB_POSTGRESDB_PASSWORD=${STANDALONE_POSTGRES_PASSWORD}
+    - DB_POSTGRESDB_DATABASE=n8n
     - N8N_DIAGNOSTICS_ENABLED=false
     - N8N_PERSONALIZATION_ENABLED=false
     - N8N_ENCRYPTION_KEY
     - N8N_USER_MANAGEMENT_JWT_SECRET
     - N8N_SECURE_COOKIE=false
+    - N8N_RUNNERS_ENABLED=true
+    - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
 
 x-ollama: &service-ollama
@@ -101,7 +108,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - open-webui:/app/backend/data
+      - open_webui_data:/app/backend/data
     healthcheck:
       test:
         [
@@ -125,8 +132,8 @@ services:
     volumes:
       - ./n8n/backup:/backup  
     depends_on:
-      # Wait for supabase postgres to be ready.
-      db:
+      # Wait for postgres to be ready.
+      postgres:
         condition: service_healthy          
 
   n8n:
@@ -151,8 +158,8 @@ services:
     depends_on:
       n8n-import:
         condition: service_completed_successfully
-      # Wait for supabase postgres to be ready.
-      db:
+      # Wait for postgres to be ready.
+      postgres:
         condition: service_healthy    
       # Wait for qdrant to be ready.
       qdrant:
@@ -182,10 +189,10 @@ services:
   neo4j:
     image: neo4j:latest
     volumes:
-        - ./neo4j/logs:/logs
-        - ./neo4j/config:/config
-        - ./neo4j/data:/data
-        - ./neo4j/plugins:/plugins
+        - neo4j_logs:/logs
+        - neo4j_config:/config
+        - neo4j_data:/data
+        - neo4j_plugins:/plugins
     expose:
       - 7473/tcp
       - 7474/tcp
@@ -209,10 +216,12 @@ services:
       - "8006:8006"
       - "8007:8007"
       - "8008:8008"
+      - "8020:8020"
+      - "8021:8021"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data:rw
-      - caddy-config:/config:rw
+      - caddy_data:/data:rw
+      - caddy_config:/config:rw
     environment:
       - GOMAXPROCS=4
       - GOMEMLIMIT=134217728
@@ -224,6 +233,7 @@ services:
       - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
       - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
       - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}
+      - QDRANT_HOSTNAME=${QDRANT_HOSTNAME:-":8020"}
       - PGADMIN_HOSTNAME=${PGADMIN_HOSTNAME:-":8021"}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
@@ -246,6 +256,7 @@ services:
       start_period: 120s        
 
   langfuse-worker:
+    container_name: langfuse-worker
     image: langfuse/langfuse-worker:3
     restart: always
     depends_on: &langfuse-depends-on
@@ -260,7 +271,7 @@ services:
     expose:
      - 3030/tcp
     environment: &langfuse-worker-env
-      DATABASE_URL: postgresql://postgres:${STANDALONE_POSTGRESS_PASSWORD}@postgres:5432/postgres
+      DATABASE_URL: postgresql://postgres:${STANDALONE_POSTGRES_PASSWORD}@postgres:5432/langfuse
       SALT: ${LANGFUSE_SALT}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
@@ -304,6 +315,7 @@ services:
       REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
 
   langfuse-web:
+    container_name: langfuse-web
     image: langfuse/langfuse:3
     restart: always
     depends_on: *langfuse-depends-on
@@ -324,6 +336,7 @@ services:
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
 
   clickhouse:
+    container_name: clickhouse
     image: clickhouse/clickhouse-server
     restart: always
     user: "101:101"
@@ -336,8 +349,8 @@ services:
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
@@ -346,6 +359,7 @@ services:
       start_period: 1s
 
   minio:
+    container_name: minio
     image: minio/minio
     restart: always
     entrypoint: sh
@@ -358,7 +372,7 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
-      - langfuse_minio_data:/data
+      - minio_data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 1s
@@ -367,6 +381,7 @@ services:
       start_period: 1s
 
   postgres:
+    container_name: postgres
     image: postgres:${POSTGRES_VERSION:-latest}
     restart: unless-stopped
     healthcheck:
@@ -380,18 +395,21 @@ services:
       POSTGRES_DB: postgres
     expose:
       - 5432/tcp
+    ports:
+      - "5433:5432"
     volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data              
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init/init_instance.sql:/docker-entrypoint-initdb.d/init_instance.sql
 
   redis:
     container_name: redis
     image: docker.io/valkey/valkey:8-alpine
     command: valkey-server --save 30 1 --loglevel warning
-    restart: unless-stopped  
+    restart: unless-stopped
     expose:
       - 6379/tcp
     volumes:
-      - valkey-data:/data
+      - valkey_data:/data
     cap_drop:
       - ALL
     cap_add:
@@ -409,6 +427,24 @@ services:
       timeout: 10s
       retries: 10           
       start_period: 15s
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4
+    restart: unless-stopped
+    expose:
+      - "80/tcp"
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    configs:
+      - source: pgpass
+        target: /pgpass
 
   searxng:
     profiles: ["searxng", "all"]  
@@ -482,3 +518,7 @@ services:
     image: ollama/ollama:rocm
     depends_on:
      - ollama-gpu-amd
+
+configs:
+  pgpass:
+    content: postgres:5432:*:postgres:${STANDALONE_POSTGRES_PASSWORD}
